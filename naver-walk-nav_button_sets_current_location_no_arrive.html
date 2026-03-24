@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>NavWalk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #21262d;
+    --border:    #30363d;
+    --accent:    #58a6ff;
+    --accent2:   #3fb950;
+    --danger:    #f85149;
+    --text:      #e6edf3;
+    --text2:     #8b949e;
+    --text3:     #484f58;
+    --radius:    12px;
+    --radius-sm: 8px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', -apple-system, sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+  #topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 20; flex-shrink: 0;
+  }
+  #topbar .logo { font-size: 17px; font-weight: 700; letter-spacing: -.5px; color: var(--accent); white-space: nowrap; }
+  .input-row { display: flex; flex: 1; gap: 6px; min-width: 0; }
+  .addr-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text); font-size: 13px;
+    padding: 7px 11px; outline: none; min-width: 0; transition: border-color .2s;
+  }
+  .addr-input::placeholder { color: var(--text3); }
+  .addr-input:focus { border-color: var(--accent); }
+  .go-btn {
+    background: var(--accent); color: #000; border: none;
+    border-radius: var(--radius-sm); font-size: 12px; font-weight: 700;
+    padding: 7px 13px; cursor: pointer; white-space: nowrap;
+    transition: opacity .15s, transform .1s;
+  }
+  .go-btn:active { transform: scale(.96); }
+  .go-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .ble-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text2); font-size: 12px;
+    padding: 7px 10px; cursor: pointer; white-space: nowrap;
+    transition: all .2s; flex-shrink: 0;
+  }
+  .ble-btn.connected { border-color: var(--accent2); color: var(--accent2); }
+
+  #mapWrap { flex: 1; position: relative; overflow: hidden; min-height: 0; }
+  #naverMap { width: 100%; height: 100%; }
+  #mapLoading {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; background: var(--bg);
+    gap: 12px; font-size: 14px; color: var(--text2); z-index: 5;
+  }
+  .map-btn {
+    position: absolute; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 50%; width: 40px; height: 40px; display: flex;
+    align-items: center; justify-content: center; cursor: pointer;
+    font-size: 18px; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,.4); transition: all .2s;
+  }
+  .map-btn:active { transform: scale(.92); }
+  .locate-btn { bottom: 14px; right: 14px; }
+
+  #navStatusBar {
+    display: none; position: absolute; top: 10px; left: 10px; right: 10px;
+    background: rgba(22,27,34,0.92); border: 1px solid var(--border);
+    border-radius: 30px; padding: 8px 16px;
+    align-items: center; gap: 8px; z-index: 10;
+    backdrop-filter: blur(8px);
+  }
+  #navStatusIcon { font-size: 16px; flex-shrink: 0; }
+  #navStatusText { font-size: 13px; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #navEtaBadge {
+    background: var(--accent); color: #000; font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+  }
+
+  #navAlertPopup {
+    display: none; position: absolute; top: 10px; left: 10px; right: 10px;
+    background: var(--surface); border: 2px solid var(--accent);
+    border-radius: var(--radius); padding: 14px 18px;
+    align-items: center; gap: 16px; z-index: 11;
+    box-shadow: 0 0 0 4px rgba(88,166,255,0.15), 0 8px 24px rgba(0,0,0,0.6);
+    animation: popIn .25s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes popIn {
+    from { transform: scale(.88) translateY(-8px); opacity: 0; }
+    to   { transform: scale(1)   translateY(0);    opacity: 1; }
+  }
+  #alertIconWrap {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--accent); display: flex; align-items: center; justify-content: center;
+    font-size: 28px; flex-shrink: 0;
+    box-shadow: 0 0 0 6px rgba(88,166,255,0.2);
+  }
+  #alertBody { flex: 1; min-width: 0; }
+  #alertDistance {
+    font-size: 13px; font-weight: 700; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px;
+  }
+  #alertInstruction { font-size: 20px; font-weight: 700; line-height: 1.2; }
+
+  #panel { background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; max-height: 38vh; display: flex; flex-direction: column; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .tab { flex: 1; padding: 10px; font-size: 12px; font-weight: 600; text-align: center; cursor: pointer; color: var(--text3); border-bottom: 2px solid transparent; transition: all .2s; user-select: none; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; overflow-y: auto; flex: 1; }
+  .tab-content.active { display: block; }
+
+  #statsBar { display: none; padding: 8px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface2); }
+  .stat-item { flex: 1; text-align: center; }
+  .stat-item + .stat-item { border-left: 1px solid var(--border); }
+  .stat-val { font-size: 18px; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  .stat-unit { font-size: 10px; color: var(--text3); margin-left: 2px; }
+  .stat-label { font-size: 10px; color: var(--text3); margin-top: 1px; }
+
+  #turnList { padding: 6px 0; }
+  .turn-item { display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer; border-left: 3px solid transparent; transition: all .15s; }
+  .turn-item:hover { background: var(--surface2); }
+  .turn-item.active-turn { border-left-color: var(--accent); background: rgba(88,166,255,.07); }
+  .turn-icon { font-size: 20px; min-width: 28px; text-align: center; }
+  .turn-info { flex: 1; min-width: 0; }
+  .turn-road { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .turn-dist { font-size: 11px; color: var(--text2); margin-top: 1px; }
+  .turn-type { font-size: 10px; color: var(--text3); background: var(--surface2); padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+
+  #tab-search { padding: 10px; }
+  .search-input-wrap { display: flex; gap: 8px; margin-bottom: 8px; }
+  #searchInput { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; padding: 8px 12px; outline: none; }
+  #searchInput:focus { border-color: var(--accent); }
+  .search-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); font-size: 13px; padding: 8px 12px; cursor: pointer; }
+  .place-item { display: flex; align-items: center; gap: 10px; padding: 9px 6px; border-radius: var(--radius-sm); cursor: pointer; transition: background .15s; }
+  .place-item:hover { background: var(--surface2); }
+  .place-icon { font-size: 18px; flex-shrink: 0; }
+  .place-name { font-size: 13px; font-weight: 500; }
+  .place-addr { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+  .msg-box { text-align: center; padding: 20px; color: var(--text3); font-size: 13px; line-height: 1.6; }
+  .error-box { margin: 10px; background: rgba(248,81,73,.1); border: 1px solid var(--danger); border-radius: var(--radius-sm); padding: 12px; font-size: 12px; color: var(--danger); line-height: 1.5; }
+  .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  #debugPanel {
+    border-top: 1px solid var(--border);
+    background: #0b0f14;
+    flex-shrink: 0;
+    height: 160px;
+    display: flex;
+    flex-direction: column;
+  }
+  #debugTop {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text2);
+  }
+  #debugControls {
+    display: flex;
+    gap: 6px;
+  }
+  .debug-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  #debugLog {
+    flex: 1;
+    overflow: auto;
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    color: #b7f5c0;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <span class="logo">🚶 NavWalk</span>
+    <div class="input-row">
+      <input id="startInput" class="addr-input" placeholder="출발지 입력">
+      <input id="endInput"   class="addr-input" placeholder="목적지 입력">
+      <button class="go-btn" id="goBtn" onclick="startNavigation()">탐색</button>
+    </div>
+    <button class="ble-btn" id="bleBtn" onclick="connectBLE()">📶 BLE</button>
+  </div>
+
+  <div id="mapWrap">
+    <div id="mapLoading"><div class="spinner"></div>지도 불러오는 중…</div>
+    <div id="naverMap"></div>
+
+    <div id="navStatusBar">
+      <span id="navStatusIcon">🚶</span>
+      <span id="navStatusText">목적지를 설정하세요</span>
+      <span id="navEtaBadge" style="display:none"></span>
+    </div>
+
+    <div id="navAlertPopup" style="display:none">
+      <div id="alertIconWrap">
+        <span id="alertIcon">→</span>
+      </div>
+      <div id="alertBody">
+        <div id="alertDistance">10m 후</div>
+        <div id="alertInstruction">우회전</div>
+      </div>
+    </div>
+
+    <button class="map-btn locate-btn" onclick="locateMe()" title="내 위치">📍</button>
+  </div>
+
+  <div id="statsBar">
+    <div class="stat-item">
+      <div class="stat-val"><span id="statDist">—</span><span class="stat-unit">km</span></div>
+      <div class="stat-label">거리</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val"><span id="statTime">—</span><span class="stat-unit">분</span></div>
+      <div class="stat-label">소요시간</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val"><span id="statCalorie">—</span><span class="stat-unit">kcal</span></div>
+      <div class="stat-label">칼로리</div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('route', this)">🗺 경로 안내</div>
+      <div class="tab"        onclick="switchTab('search', this)">🔍 장소 검색</div>
+    </div>
+    <div id="tab-route" class="tab-content active">
+      <div id="turnList"><div class="msg-box">목적지를 입력하고 경로 탐색을 시작하세요.</div></div>
+    </div>
+    <div id="tab-search" class="tab-content">
+      <div class="search-input-wrap">
+        <input id="searchInput" placeholder="장소, 주소 검색…" oninput="searchPlaces(this.value)">
+        <button class="search-btn" onclick="searchPlaces(document.getElementById('searchInput').value)">🔍</button>
+      </div>
+      <div id="placeList"><div class="msg-box">검색어를 입력하세요</div></div>
+    </div>
+  </div>
+
+  <div id="debugPanel">
+    <div id="debugTop">
+      <span>디버그 로그</span>
+      <div id="debugControls">
+        <button class="debug-btn" onclick="clearDebugLog()">지우기</button>
+      </div>
+    </div>
+    <div id="debugLog"></div>
+  </div>
+
+</div>
+
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=6cm1gapanx&submodules=geocoder,geometry&callback=initMap"></script>
+<script>
+'use strict';
+
+// ── 디버그 로그 ───────────────────────────────────────
+function debugLog(label, data) {
+  const time = new Date().toLocaleTimeString();
+  let text = '[' + time + '] ' + label;
+  if (typeof data !== 'undefined') {
+    try {
+      text += ' ' + (typeof data === 'string' ? data : JSON.stringify(data, null, 2));
+    } catch (e) {
+      text += ' ' + String(data);
+    }
+  }
+  console.log(label, data);
+  const el = document.getElementById('debugLog');
+  if (el) {
+    el.textContent += text + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+}
+function clearDebugLog() {
+  const el = document.getElementById('debugLog');
+  if (el) el.textContent = '';
+}
+
+// ── 전역 상태 ──────────────────────────────────────────
+const mapState = {
+  map: null, startMarker: null, endMarker: null,
+  routePolyline: null, passedPolyline: null,
+  myMarker: null, myAccuracyCircle: null,
+  routeFullPath: [], closestPathIndex: 0,
+};
+const gpsState = {
+  watchId: null, currentLatLng: null,
+  followMode: true, isProgrammaticMove: false,
+  sessionToken: 'u_' + Math.random().toString(36).slice(2, 10),
+};
+const navState = {
+  steps: [], currentStepIndex: 0, lastAnnouncedIndex: -1,
+  destinationLabel: '', routeSummaryData: null,
+  isRerouting: false, lastRerouteTime: 0, currentSteps: [],
+};
+const bleState = {
+  device: null, server: null, characteristic: null, notifyChar: null,
+  ready: false, lastCommand: '', msgSeq: 0,
+  pendingAckId: null, ackResolver: null,
+  reconnectTimer: null, reconnectAttempts: 0,
+};
+
+const BLE_SERVICE_UUID        = '12345678-1234-1234-1234-1234567890ab';
+const BLE_CHARACTERISTIC_UUID = 'abcdefab-1234-1234-1234-abcdefabcdef';
+const BLE_NOTIFY_UUID         = 'fedcfedc-1234-1234-1234-fedcfedcfedc';
+const BLE_ACK_TIMEOUT         = 1500;
+const BLE_MAX_RETRIES         = 3;
+const BLE_MAX_RECONNECT       = 5;
+const REROUTE_COOLDOWN_MS     = 10000;
+
+const GUIDE_TYPE = {
+  1:  { icon: '↑',  label: '직진' },
+  2:  { icon: '↗',  label: '우측 방향' },
+  3:  { icon: '→',  label: '우회전' },
+  4:  { icon: '↘',  label: '우측 방향' },
+  5:  { icon: '↓',  label: 'U턴' },
+  6:  { icon: '↙',  label: '좌측 방향' },
+  7:  { icon: '←',  label: '좌회전' },
+  8:  { icon: '↖',  label: '좌측 방향' },
+  16: { icon: '🚶', label: '출발' },
+  17: { icon: '🏁', label: '도착' },
+  18: { icon: '↑',  label: '직진' },
+};
+
+// ── BLE ───────────────────────────────────────────────
+function updateBLEButtonUI() {
+  const btn = document.getElementById('bleBtn');
+  if (!btn) return;
+  if (bleState.ready) { btn.textContent = '✅ BLE 연결됨'; btn.classList.add('connected'); }
+  else                { btn.textContent = '📶 BLE 연결';  btn.classList.remove('connected'); }
+}
+
+async function connectBLE() {
+  if (!navigator.bluetooth) { alert('Web Bluetooth 미지원. 안드로이드 Chrome을 사용하세요.'); return; }
+  try {
+    debugLog('[BLE] 연결 시도 시작');
+    if (!bleState.device) {
+      bleState.device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [BLE_SERVICE_UUID] }],
+        optionalServices: [BLE_SERVICE_UUID],
+      });
+      bleState.device.addEventListener('gattserverdisconnected', onBleDisconnected);
+      debugLog('[BLE] 디바이스 선택 완료', { name: bleState.device.name || 'unknown' });
+    }
+    await setupBleConnection();
+    bleState.reconnectAttempts = 0;
+    updateBLEButtonUI();
+    alert('ESP32 BLE 연결 완료');
+    debugLog('[BLE] 연결 완료');
+    await syncCurrentStateToBLE();
+  } catch (err) {
+    resetBleState(); updateBLEButtonUI();
+    debugLog('[BLE] 연결 실패', { message: err.message });
+    alert('BLE 연결 실패: ' + err.message);
+  }
+}
+
+async function setupBleConnection() {
+  bleState.server         = await bleState.device.gatt.connect();
+  const service           = await bleState.server.getPrimaryService(BLE_SERVICE_UUID);
+  bleState.characteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
+  bleState.notifyChar     = await service.getCharacteristic(BLE_NOTIFY_UUID);
+  await bleState.notifyChar.startNotifications();
+  bleState.notifyChar.removeEventListener('characteristicvaluechanged', handleBleNotification);
+  bleState.notifyChar.addEventListener('characteristicvaluechanged', handleBleNotification);
+  bleState.ready = true;
+  debugLog('[BLE] characteristic 준비 완료');
+}
+
+function resetBleState() {
+  bleState.ready = false;
+  bleState.server = null;
+  bleState.characteristic = null;
+  bleState.notifyChar = null;
+}
+
+function onBleDisconnected() {
+  debugLog('[BLE] 연결 끊김');
+  resetBleState();
+  updateBLEButtonUI();
+  tryReconnectBLE();
+}
+
+async function tryReconnectBLE() {
+  if (!bleState.device || bleState.reconnectTimer) return;
+  const attempt = async () => {
+    if (bleState.ready) { bleState.reconnectTimer = null; return; }
+    if (bleState.reconnectAttempts >= BLE_MAX_RECONNECT) {
+      debugLog('[BLE] 재연결 중단');
+      bleState.reconnectTimer = null;
+      return;
+    }
+    bleState.reconnectAttempts++;
+    debugLog('[BLE] 재연결 시도', { attempt: bleState.reconnectAttempts });
+    try {
+      await setupBleConnection();
+      bleState.reconnectAttempts = 0;
+      bleState.reconnectTimer = null;
+      updateBLEButtonUI();
+      debugLog('[BLE] 재연결 성공');
+      await syncCurrentStateToBLE();
+    } catch (err) {
+      debugLog('[BLE] 재연결 실패', { message: err.message });
+      bleState.reconnectTimer = setTimeout(() => { bleState.reconnectTimer = null; attempt(); }, 2000);
+    }
+  };
+  bleState.reconnectTimer = setTimeout(() => { bleState.reconnectTimer = null; attempt(); }, 2000);
+}
+
+function handleBleNotification(event) {
+  try {
+    const raw = new TextDecoder().decode(event.target.value);
+    debugLog('[BLE] notify 수신(raw)', raw);
+    const msg = JSON.parse(raw);
+    debugLog('[BLE] notify 수신(json)', msg);
+    if (bleState.ackResolver && msg.ack === bleState.ackResolver.id) {
+      const resolve = bleState.ackResolver.resolve;
+      bleState.pendingAckId = null;
+      bleState.ackResolver = null;
+      debugLog('[BLE] ACK 일치', { ack: msg.ack });
+      resolve(true);
+    }
+  } catch (e) {
+    debugLog('[BLE] notify 파싱 실패', { message: e.message });
+    console.error('BLE notify 파싱 실패:', e);
+  }
+}
+
+async function sendBLE(message) {
+  if (!bleState.ready || !bleState.characteristic || !message) {
+    debugLog('[BLE] 전송 스킵', {
+      ready: bleState.ready,
+      hasChar: !!bleState.characteristic,
+      message
+    });
+    return false;
+  }
+  if (bleState.lastCommand === message && bleState.pendingAckId === null) {
+    debugLog('[BLE] 중복 명령 스킵', { message });
+    return true;
+  }
+  debugLog('[BLE] 전송 시작', { message });
+  for (let i = 1; i <= BLE_MAX_RETRIES; i++) {
+    try {
+      debugLog('[BLE] 전송 시도', { try: i, message });
+      await writeBleWithAck(message);
+      bleState.lastCommand = message;
+      debugLog('[BLE] 전송 성공', { message });
+      return true;
+    } catch (e) {
+      debugLog('[BLE] 전송 실패', { try: i, message, error: e.message });
+      await sleep(250);
+    }
+  }
+  debugLog('[BLE] 최종 전송 실패', { message });
+  return false;
+}
+
+function writeBleWithAck(message) {
+  const payload = { id: ++bleState.msgSeq, cmd: message, ts: Date.now() };
+  const data    = new TextEncoder().encode(JSON.stringify(payload));
+  debugLog('[BLE] write payload', payload);
+  return new Promise((resolve, reject) => {
+    bleState.pendingAckId = payload.id;
+    const resolver = { id: payload.id, resolve, reject };
+    bleState.ackResolver = resolver;
+    setTimeout(() => {
+      if (bleState.ackResolver === resolver) {
+        bleState.pendingAckId = null;
+        bleState.ackResolver = null;
+        debugLog('[BLE] ACK timeout', { id: payload.id, cmd: payload.cmd });
+        reject(new Error('ACK timeout'));
+      }
+    }, BLE_ACK_TIMEOUT);
+
+    bleState.characteristic.writeValue(data).catch(err => {
+      debugLog('[BLE] writeValue 실패', { message: err.message });
+      if (bleState.ackResolver === resolver) {
+        bleState.pendingAckId = null;
+        bleState.ackResolver = null;
+      }
+      reject(err);
+    });
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function getBleCommand(step, remainDistance) {
+  debugLog('[BLE CMD 체크]', {
+    stepType: step?.type,
+    remainDistance,
+    instruction: step?.instruction
+  });
+
+  if (!step) {
+    debugLog('[BLE CMD 결과]', 'STRAIGHT (step 없음)');
+    return 'STRAIGHT';
+  }
+
+  if (step.type === 17) {
+    debugLog('[BLE CMD 결과]', 'ARRIVE');
+    return 'ARRIVE';
+  }
+
+  if ([7, 6, 8].includes(step.type)) {
+    debugLog('[BLE CMD 결과]', 'LEFT');
+    return 'LEFT';
+  }
+
+  if ([3, 2, 4].includes(step.type)) {
+    debugLog('[BLE CMD 결과]', 'RIGHT');
+    return 'RIGHT';
+  }
+
+  if (step.type === 5) {
+    debugLog('[BLE CMD 결과]', 'UTURN');
+    return 'UTURN';
+  }
+
+  debugLog('[BLE CMD 결과]', 'STRAIGHT');
+  return 'STRAIGHT';
+}
+
+async function syncCurrentStateToBLE() {
+  if (!bleState.ready) return;
+  const step = navState.steps[navState.currentStepIndex];
+  debugLog('[BLE] 현재 상태 동기화', { currentStepIndex: navState.currentStepIndex, step });
+  await sendBLE(getBleCommand(step || null, 0));
+}
+
+// ── TMAP 파싱 ─────────────────────────────────────────
+function parseTmapPedestrianResponse(data) {
+  if (!data || !Array.isArray(data.features) || !data.features.length)
+    throw new Error('TMAP 보행자 경로 응답이 비어 있습니다.');
+
+  const path = [], guides = [];
+  let totalDist = 0, totalTimeSec = 0;
+
+  data.features.forEach((f, idx) => {
+    const geo = f.geometry || {}, props = f.properties || {};
+
+    if (geo.type === 'LineString' && Array.isArray(geo.coordinates)) {
+      geo.coordinates.forEach(c => path.push([Number(c[0]), Number(c[1])]));
+      if (typeof props.distance === 'number') totalDist += props.distance;
+      if (typeof props.time === 'number') totalTimeSec += props.time;
+    }
+
+    if (geo.type === 'Point' && Array.isArray(geo.coordinates)) {
+      const mappedType = mapTmapTurnType(props);
+      const guideObj = {
+        pointIndex:   findNearestPathIndex(path, geo.coordinates),
+        distance:     Number(props.distance || 0),
+        instructions: props.description || props.name || '이동',
+        type:         mappedType,
+      };
+      guides.push(guideObj);
+
+      debugLog('[TMAP GUIDE 생성]', {
+        featureIndex: idx,
+        rawTurnType: Number(props.turnType || 0),
+        description: String(props.description || ''),
+        mappedType,
+        guideObj
+      });
+    }
+  });
+
+  guides.sort((a, b) => a.pointIndex - b.pointIndex);
+
+  if (!path.length) throw new Error('경로 좌표를 찾을 수 없습니다.');
+
+  debugLog('[TMAP 파싱 완료]', {
+    pathCount: path.length,
+    guideCount: guides.length,
+    totalDist,
+    totalTimeSec,
+    guides
+  });
+
+  return { summary: { distance: totalDist, duration: totalTimeSec * 1000 }, path, guide: guides };
+}
+
+function findNearestPathIndex(path, coord) {
+  let best = 0, bestDist = Infinity;
+  const tLng = Number(coord[0]), tLat = Number(coord[1]);
+  for (let i = 0; i < path.length; i++) {
+    const d = getDistanceMeters(tLat, tLng, Number(path[i][1]), Number(path[i][0]));
+    if (d < bestDist) { bestDist = d; best = i; }
+  }
+  return best;
+}
+
+function mapTmapTurnType(props) {
+  const type = Number(props.turnType || 0);
+  const desc = String(props.description || '').trim();
+
+  debugLog('[TMAP 원본]', {
+    turnType: type,
+    description: desc
+  });
+
+  // 문자열 우선 판별
+  if (desc.includes('우회전') || desc.includes('우측') || desc.includes('오른쪽')) {
+    debugLog('[TMAP 매핑 결과]', { description: desc, mapped: 3, reason: '우회전 문자열 우선' });
+    return 3;
+  }
+  if (desc.includes('좌회전') || desc.includes('좌측') || desc.includes('왼쪽')) {
+    debugLog('[TMAP 매핑 결과]', { description: desc, mapped: 7, reason: '좌회전 문자열 우선' });
+    return 7;
+  }
+  if (desc.includes('유턴')) {
+    debugLog('[TMAP 매핑 결과]', { description: desc, mapped: 5, reason: '유턴 문자열' });
+    return 5;
+  }
+  if (desc.includes('도착')) {
+    debugLog('[TMAP 매핑 결과]', { description: desc, mapped: 17, reason: '도착 문자열' });
+    return 17;
+  }
+  if (desc.includes('출발')) {
+    debugLog('[TMAP 매핑 결과]', { description: desc, mapped: 16, reason: '출발 문자열' });
+    return 16;
+  }
+
+  // turnType 보조 판별
+  if ([16, 17, 18, 2, 3, 4].includes(type)) {
+    debugLog('[TMAP 매핑 결과]', { turnType: type, mapped: 3, reason: '우회전 turnType' });
+    return 3;
+  }
+  if ([12, 13, 14, 6, 7, 8].includes(type)) {
+    debugLog('[TMAP 매핑 결과]', { turnType: type, mapped: 7, reason: '좌회전 turnType' });
+    return 7;
+  }
+  if ([5, 19].includes(type)) {
+    debugLog('[TMAP 매핑 결과]', { turnType: type, mapped: 5, reason: '유턴 turnType' });
+    return 5;
+  }
+  if (type === 200) {
+    debugLog('[TMAP 매핑 결과]', { turnType: type, mapped: 17, reason: '도착 turnType' });
+    return 17;
+  }
+  if (type === 100) {
+    debugLog('[TMAP 매핑 결과]', { turnType: type, mapped: 16, reason: '출발 turnType' });
+    return 16;
+  }
+
+  debugLog('[TMAP 매핑 결과]', { turnType: type, description: desc, mapped: 1, reason: '기본값 직진' });
+  return 1;
+}
+
+function setCurrentLocationAsStart(lat, lng) {
+  const el = document.getElementById('startInput');
+  if (!el) return;
+  el.value = '내 위치';
+  el.dataset.useCurrentLocation = 'true';
+  el.dataset.lat = String(lat);
+  el.dataset.lng = String(lng);
+}
+
+// ── 지도 초기화 ───────────────────────────────────────
+function initMap() {
+  document.getElementById('mapLoading').style.display = 'none';
+  mapState.map = new naver.maps.Map('naverMap', {
+    center: new naver.maps.LatLng(37.5751, 126.9769), zoom: 14,
+  });
+  debugLog('[MAP] 초기화 완료');
+  bindFollowEvents();
+  document.getElementById('startInput').addEventListener('input', e => {
+    if (e.target.value.trim() !== '내 위치') e.target.dataset.useCurrentLocation = 'false';
+  });
+  updateBLEButtonUI();
+  startLiveTracking();
+}
+
+// ── 거리 계산 ─────────────────────────────────────────
+function getDistanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toR = d => d * Math.PI / 180;
+  const dLat = toR(lat2 - lat1), dLng = toR(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toR(lat1)) * Math.cos(toR(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ── 내비 스텝 ─────────────────────────────────────────
+function buildNavigationSteps(path, guides) {
+  if (!Array.isArray(path) || !Array.isArray(guides)) {
+    navState.steps = [];
+    navState.currentStepIndex = 0;
+    navState.lastAnnouncedIndex = -1;
+    bleState.lastCommand = '';
+    debugLog('[STEP BUILD] path/guides 없음');
+    return;
+  }
+
+  navState.steps = guides
+    .filter(g => typeof g.pointIndex === 'number' && path[g.pointIndex])
+    .map((g, idx) => {
+      const pt = path[g.pointIndex];
+      const type = GUIDE_TYPE[g.type] || { icon: '•', label: '이동' };
+      const stepObj = {
+        index: idx,
+        pointIndex: g.pointIndex,
+        type: g.type,
+        icon: type.icon,
+        label: type.label,
+        instruction: g.instructions || type.label,
+        distance: Number(g.distance || 0),
+        lat: Number(pt[1]),
+        lng: Number(pt[0])
+      };
+      debugLog('[STEP BUILD]', stepObj);
+      return stepObj;
+    });
+
+  navState.currentStepIndex = 0;
+  navState.lastAnnouncedIndex = -1;
+  bleState.lastCommand = '';
+
+  debugLog('[STEP BUILD 완료]', {
+    stepCount: navState.steps.length,
+    steps: navState.steps
+  });
+}
+
+// ── 내비 UI ───────────────────────────────────────────
+let navUIState = 'idle';
+let alertHideTimer = null;
+
+function showNavStatusBar(icon, text, eta) {
+  const bar = document.getElementById('navStatusBar');
+  document.getElementById('navStatusIcon').textContent  = icon;
+  document.getElementById('navStatusText').textContent  = text;
+  const badge = document.getElementById('navEtaBadge');
+  if (eta) { badge.textContent = eta + '분'; badge.style.display = 'inline'; }
+  else      { badge.style.display = 'none'; }
+  bar.style.display = 'flex';
+}
+
+function showAlertPopup(icon, distText, instruction) {
+  const popup = document.getElementById('navAlertPopup');
+  document.getElementById('alertIcon').textContent        = icon;
+  document.getElementById('alertDistance').textContent    = distText;
+  document.getElementById('alertInstruction').textContent = instruction;
+
+  popup.style.display = 'none';
+  void popup.offsetWidth;
+  popup.style.display = 'flex';
+
+  document.getElementById('navStatusBar').style.display = 'none';
+
+  if (alertHideTimer) { clearTimeout(alertHideTimer); alertHideTimer = null; }
+}
+
+function hideAlertPopup(icon, text, eta) {
+  document.getElementById('navAlertPopup').style.display = 'none';
+  showNavStatusBar(icon, text, eta);
+}
+
+function updateActiveTurnItem(index) {
+  document.querySelectorAll('.turn-item').forEach((el, i) => el.classList.toggle('active-turn', i === index));
+  const active = document.querySelectorAll('.turn-item')[index];
+  if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function updateNavigationByLocation(lat, lng) {
+  if (!navState.steps.length) return;
+
+  const step = navState.steps[navState.currentStepIndex];
+  debugLog('[현재 STEP]', step);
+
+  if (!step) return;
+
+  const distToCurrent = getDistanceMeters(lat, lng, step.lat, step.lng);
+  debugLog('[현재 거리]', {
+    currentStepIndex: navState.currentStepIndex,
+    distToCurrent
+  });
+
+  if (distToCurrent < 15 && navState.currentStepIndex < navState.steps.length - 1) {
+    navState.currentStepIndex++;
+    bleState.lastCommand = '';
+
+    const next = navState.steps[navState.currentStepIndex];
+    const eta  = navState.routeSummaryData ? navState.routeSummaryData.timeMin : null;
+    debugLog('[STEP 변경]', {
+      newIndex: navState.currentStepIndex,
+      next
+    });
+
+    hideAlertPopup(next ? next.icon : '🚶', next ? next.instruction : '이동 중', eta);
+    navUIState = 'navigating';
+    if (alertHideTimer) { clearTimeout(alertHideTimer); alertHideTimer = null; }
+  }
+
+  const cur = navState.steps[navState.currentStepIndex];
+  const rem = getDistanceMeters(lat, lng, cur.lat, cur.lng);
+  const eta = navState.routeSummaryData ? navState.routeSummaryData.timeMin : null;
+
+  debugLog('[현재 판단 대상 STEP]', cur);
+  debugLog('[현재 판단 대상 거리]', rem);
+
+  updateActiveTurnItem(navState.currentStepIndex);
+
+  if (navState.lastAnnouncedIndex !== navState.currentStepIndex) {
+    debugLog('[BLE] step 변경으로 명령 전송', {
+      stepIndex: navState.currentStepIndex,
+      command: getBleCommand(cur, rem)
+    });
+    sendBLE(getBleCommand(cur, rem));
+    navState.lastAnnouncedIndex = navState.currentStepIndex;
+  }
+
+  if (navState.currentStepIndex === navState.steps.length - 1 && rem < 15) {
+    debugLog('[도착 처리]', { rem });
+    showAlertPopup('🏁', '도착!', '목적지에 도착했습니다');
+    if (bleState.lastCommand !== 'ARRIVE') sendBLE('ARRIVE');
+    navUIState = 'arrived';
+    return;
+  }
+
+  if (rem <= 10) {
+    if (navUIState !== 'alert') {
+      navUIState = 'alert';
+      const distText = rem <= 3 ? '지금!' : Math.round(rem) + 'm 후';
+      debugLog('[알림 팝업 표시]', {
+        icon: cur.icon,
+        distText,
+        instruction: cur.instruction,
+        bleCommand: getBleCommand(cur, rem)
+      });
+      showAlertPopup(cur.icon, distText, cur.instruction);
+      sendBLE(getBleCommand(cur, rem));
+    } else {
+      const distText = rem <= 3 ? '지금!' : Math.round(rem) + 'm 후';
+      document.getElementById('alertDistance').textContent = distText;
+    }
+  } else {
+    if (navUIState === 'alert') {
+      navUIState = 'navigating';
+      hideAlertPopup(cur.icon, cur.instruction, eta);
+    } else {
+      navUIState = 'navigating';
+      showNavStatusBar(cur.icon, cur.instruction, eta);
+    }
+  }
+}
+
+// ── 경로 진행 추적 ────────────────────────────────────
+function updateRouteProgress(lat, lng) {
+  if (!mapState.routeFullPath.length) return;
+  const full = mapState.routeFullPath;
+  const searchEnd = Math.min(mapState.closestPathIndex + 100, full.length);
+  let minDist = Infinity, minIdx = mapState.closestPathIndex;
+  for (let i = mapState.closestPathIndex; i < searchEnd; i++) {
+    const d = getDistanceMeters(lat, lng, full[i].lat(), full[i].lng());
+    if (d < minDist) { minDist = d; minIdx = i; }
+  }
+  mapState.closestPathIndex = minIdx;
+  if (mapState.routePolyline) mapState.routePolyline.setPath(full.slice(minIdx));
+  const passed = full.slice(0, minIdx + 1);
+  if (mapState.passedPolyline) {
+    mapState.passedPolyline.setPath(passed);
+  } else if (passed.length > 1) {
+    mapState.passedPolyline = new naver.maps.Polyline({
+      map: mapState.map, path: passed,
+      strokeColor: '#30363d', strokeOpacity: 0.5, strokeWeight: 5,
+    });
+  }
+}
+
+// ── 이탈 감지 & 재탐색 ────────────────────────────────
+function getMinDistanceToRoute(lat, lng) {
+  if (!mapState.routePolyline) return Infinity;
+  const path = mapState.routePolyline.getPath();
+  let minDist = Infinity;
+  for (let i = mapState.closestPathIndex; i < path.getLength(); i++) {
+    const d = getDistanceMeters(lat, lng, path.getAt(i).lat(), path.getAt(i).lng());
+    if (d < minDist) minDist = d;
+  }
+  return minDist;
+}
+
+async function checkRouteDeviation(lat, lng) {
+  if (!navState.steps.length || navState.isRerouting) return;
+  if (Date.now() - navState.lastRerouteTime < REROUTE_COOLDOWN_MS) return;
+  const minDistance = getMinDistanceToRoute(lat, lng);
+  if (minDistance <= 25) return;
+
+  debugLog('[이탈 감지]', { minDistance });
+
+  navState.isRerouting = true;
+  navState.lastRerouteTime = Date.now();
+  const endAddr = document.getElementById('endInput').value.trim();
+  if (!endAddr) { navState.isRerouting = false; return; }
+
+  document.getElementById('turnList').innerHTML =
+    '<div class="msg-box"><div class="spinner"></div><br>경로를 벗어났습니다. 재탐색 중…</div>';
+
+  try {
+    const endData = await geocode(endAddr);
+    clearMapOverlays();
+    const res  = await fetch('/api/directions?start=' + lng + ',' + lat + '&goal=' + endData.x + ',' + endData.y);
+    const data = await res.json();
+    if (!data || data.error) throw new Error(data.error || '재탐색 실패');
+    applyRoute(data, { latlng: gpsState.currentLatLng, x: String(lng), y: String(lat) }, endData, endAddr, true);
+    navUIState = 'navigating';
+    if (alertHideTimer) { clearTimeout(alertHideTimer); alertHideTimer = null; }
+    document.getElementById('navAlertPopup').style.display = 'none';
+    const firstStep = navState.steps[0] || null;
+    const etaMin    = navState.routeSummaryData ? navState.routeSummaryData.timeMin : null;
+    showNavStatusBar(firstStep ? firstStep.icon : '🚶', firstStep ? firstStep.instruction : '이동 중', etaMin);
+    debugLog('[재탐색 성공]');
+  } catch (e) {
+    debugLog('[재탐색 실패]', { message: e.message });
+    document.getElementById('turnList').innerHTML = '<div class="error-box">⚠️ 재탐색 실패: ' + e.message + '</div>';
+  } finally { navState.isRerouting = false; }
+}
+
+// ── Follow 모드 ───────────────────────────────────────
+function bindFollowEvents() {
+  naver.maps.Event.addListener(mapState.map, 'dragstart', () => {
+    if (!gpsState.isProgrammaticMove) { gpsState.followMode = false; updateFollowBtnUI(); }
+  });
+  naver.maps.Event.addListener(mapState.map, 'zoom_changed', () => {
+    if (!gpsState.isProgrammaticMove) { gpsState.followMode = false; updateFollowBtnUI(); }
+  });
+}
+function updateFollowBtnUI() {
+  const btn = document.querySelector('.locate-btn');
+  if (!btn) return;
+  btn.style.opacity = gpsState.followMode ? '1' : '0.55';
+  btn.style.transform = gpsState.followMode ? 'scale(1.05)' : 'scale(1)';
+}
+function moveMapToLocation(latlng, zoom) {
+  if (!mapState.map || !latlng) return;
+  gpsState.isProgrammaticMove = true;
+  mapState.map.setCenter(latlng); mapState.map.setZoom(zoom || 17);
+  setTimeout(() => { gpsState.isProgrammaticMove = false; }, 300);
+}
+
+// ── 내 위치 버튼 ──────────────────────────────────────
+function locateMe() {
+  gpsState.followMode = true;
+  updateFollowBtnUI();
+  if (gpsState.currentLatLng) {
+    setCurrentLocationAsStart(gpsState.currentLatLng.lat(), gpsState.currentLatLng.lng());
+    moveMapToLocation(gpsState.currentLatLng, 17);
+    return;
+  }
+  if (!navigator.geolocation) { alert('위치 기능 미지원'); return; }
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      const { latitude: lat, longitude: lng, accuracy } = p.coords;
+      gpsState.currentLatLng = new naver.maps.LatLng(lat, lng);
+      updateMyLocationMarker(lat, lng, accuracy);
+      setCurrentLocationAsStart(lat, lng);
+      moveMapToLocation(gpsState.currentLatLng, 17);
+      debugLog('[현재 위치 단건 조회]', { lat, lng, accuracy });
+    },
+    err => { console.error(err); alert('현재 위치를 가져올 수 없습니다.'); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+// ── 지오코딩 ──────────────────────────────────────────
+function geocode(address) {
+  return new Promise((resolve, reject) => {
+    naver.maps.Service.geocode({ query: address }, (status, res) => {
+      if (status === naver.maps.Service.Status.ERROR || res.v2.meta.totalCount === 0) {
+        reject(new Error('주소를 찾을 수 없습니다: ' + address)); return;
+      }
+      const item = res.v2.addresses[0];
+      const road = item.roadAddress || item.jibunAddress;
+      if (!road) { reject(new Error('주소 정보가 없습니다.')); return; }
+      resolve({ latlng: new naver.maps.LatLng(parseFloat(item.y), parseFloat(item.x)), x: item.x, y: item.y });
+    });
+  });
+}
+
+// ── 마커 ──────────────────────────────────────────────
+function makeMarker(pos, color, label) {
+  return new naver.maps.Marker({
+    map: mapState.map, position: pos,
+    icon: {
+      content: '<div style="background:' + color + ';color:#000;font-weight:700;font-size:11px;padding:4px 10px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5);">' + label + '</div>',
+      anchor: new naver.maps.Point(0, 24),
+    }
+  });
+}
+function updateMyLocationMarker(lat, lng, accuracy) {
+  const latlng = new naver.maps.LatLng(lat, lng);
+  if (!mapState.myMarker) {
+    mapState.myMarker = new naver.maps.Marker({
+      map: mapState.map, position: latlng,
+      icon: { content: '<div style="width:14px;height:14px;border-radius:50%;background:#58a6ff;box-shadow:0 0 0 5px rgba(88,166,255,.3);border:2px solid #fff"></div>', anchor: new naver.maps.Point(7, 7) }
+    });
+  } else { mapState.myMarker.setPosition(latlng); }
+  if (!mapState.myAccuracyCircle) {
+    mapState.myAccuracyCircle = new naver.maps.Circle({
+      map: mapState.map, center: latlng, radius: accuracy || 0,
+      fillColor: '#58a6ff', fillOpacity: 0.12, strokeColor: '#58a6ff', strokeOpacity: 0.3, strokeWeight: 1,
+    });
+  } else { mapState.myAccuracyCircle.setCenter(latlng); mapState.myAccuracyCircle.setRadius(accuracy || 0); }
+}
+
+// ── 위치 서버 전송 ────────────────────────────────────
+async function sendLocationToServer(lat, lng, accuracy) {
+  try {
+    await fetch('/api/location', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng, accuracy, timestamp: Date.now(), token: gpsState.sessionToken })
+    });
+  } catch (e) {
+    console.error('위치 서버 전송 실패:', e);
+  }
+}
+
+// ── 실시간 GPS 추적 ───────────────────────────────────
+function startLiveTracking() {
+  if (!navigator.geolocation) return;
+  if (gpsState.watchId !== null) {
+    navigator.geolocation.clearWatch(gpsState.watchId);
+    gpsState.watchId = null;
+  }
+  gpsState.watchId = navigator.geolocation.watchPosition(
+    p => {
+      const { latitude: lat, longitude: lng, accuracy } = p.coords;
+      gpsState.currentLatLng = new naver.maps.LatLng(lat, lng);
+      updateMyLocationMarker(lat, lng, accuracy);
+      sendLocationToServer(lat, lng, accuracy);
+
+      updateNavigationByLocation(lat, lng);
+      updateRouteProgress(lat, lng);
+      checkRouteDeviation(lat, lng);
+
+      if (gpsState.followMode) {
+        const z = mapState.map ? mapState.map.getZoom() : 17;
+        moveMapToLocation(gpsState.currentLatLng, z < 16 ? 17 : z);
+      }
+    },
+    err => console.error('GPS 추적 실패:', err),
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+  );
+}
+
+// ── 경로 공통 적용 ────────────────────────────────────
+function clearMapOverlays() {
+  ['startMarker','endMarker','routePolyline','passedPolyline'].forEach(k => {
+    if (mapState[k]) { mapState[k].setMap(null); mapState[k] = null; }
+  });
+  mapState.closestPathIndex = 0;
+  mapState.routeFullPath = [];
+}
+
+function applyRoute(tmapData, startData, endData, endAddr, useCurrentLoc) {
+  const route   = parseTmapPedestrianResponse(tmapData);
+  const distKm  = (route.summary.distance / 1000).toFixed(1);
+  const timeMin = Math.round(route.summary.duration / 1000 / 60);
+  const cal     = Math.round(Number(distKm) * 52);
+
+  navState.routeSummaryData = { distanceKm: distKm, timeMin, calorie: cal };
+  navState.destinationLabel = endAddr;
+
+  debugLog('[경로 적용]', {
+    distanceKm: distKm,
+    timeMin,
+    calorie: cal
+  });
+
+  document.getElementById('statDist').textContent    = distKm;
+  document.getElementById('statTime').textContent    = timeMin;
+  document.getElementById('statCalorie').textContent = cal;
+  document.getElementById('statsBar').style.display  = 'flex';
+
+  const pathCoords = route.path.map(p => new naver.maps.LatLng(p[1], p[0]));
+  mapState.routeFullPath = pathCoords;
+  mapState.routePolyline = new naver.maps.Polyline({
+    map: mapState.map, path: pathCoords,
+    strokeColor: '#58a6ff', strokeOpacity: 0.9, strokeWeight: 5,
+  });
+
+  mapState.startMarker = makeMarker(
+    startData.latlng,
+    '#58a6ff',
+    useCurrentLoc ? '🚶 내 위치' : '🚶 출발지'
+  );
+  mapState.endMarker   = makeMarker(endData.latlng, '#ff5252', '🏁 ' + endAddr);
+
+  buildTurnList(route.guide || []);
+  buildNavigationSteps(route.path || [], route.guide || []);
+}
+
+// ── 경로 탐색 ─────────────────────────────────────────
+async function startNavigation() {
+  if (!mapState.map) { alert('지도가 아직 로딩 중입니다.'); return; }
+
+  const startInput = document.getElementById('startInput');
+  const endAddr    = document.getElementById('endInput').value.trim();
+  const btn        = document.getElementById('goBtn');
+  const useCurrentLoc = startInput.dataset.useCurrentLocation === 'true' && startInput.value.trim() === '내 위치';
+
+  if (!endAddr) { alert('목적지를 입력하세요.'); return; }
+  if (!useCurrentLoc && !startInput.value.trim()) {
+    alert('출발지를 입력하세요.');
+    return;
+  }
+  if (useCurrentLoc && !gpsState.currentLatLng) {
+    alert('현재 위치를 아직 가져오지 못했습니다. 다시 시도해주세요.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '탐색 중…';
+  document.getElementById('turnList').innerHTML = '<div class="msg-box"><div class="spinner"></div><br>경로를 탐색하고 있습니다…</div>';
+
+  try {
+    const startData = useCurrentLoc
+      ? { latlng: gpsState.currentLatLng, x: String(gpsState.currentLatLng.lng()), y: String(gpsState.currentLatLng.lat()) }
+      : await geocode(startInput.value.trim());
+
+    const endData = await geocode(endAddr);
+
+    debugLog('[경로 탐색 요청]', {
+      start: { x: startData.x, y: startData.y },
+      goal: { x: endData.x, y: endData.y }
+    });
+
+    clearMapOverlays();
+
+    const res  = await fetch('/api/directions?start=' + startData.x + ',' + startData.y + '&goal=' + endData.x + ',' + endData.y);
+    const data = await res.json();
+
+    debugLog('[서버 응답]', data);
+
+    if (!data || data.error) throw new Error(data.error || data.message || '경로 탐색 실패');
+
+    applyRoute(data, startData, endData, endAddr, useCurrentLoc);
+
+    const bounds = new naver.maps.LatLngBounds();
+    mapState.routeFullPath.forEach(p => bounds.extend(p));
+    mapState.map.fitBounds(bounds, { padding: 80 });
+
+    navUIState = 'navigating';
+    if (alertHideTimer) { clearTimeout(alertHideTimer); alertHideTimer = null; }
+    document.getElementById('navAlertPopup').style.display = 'none';
+
+    const first = navState.steps[0] || null;
+    const eta   = navState.routeSummaryData ? navState.routeSummaryData.timeMin : null;
+    showNavStatusBar(first ? first.icon : '🚶', first ? first.instruction : '이동 중', eta);
+
+    if (gpsState.currentLatLng) updateNavigationByLocation(gpsState.currentLatLng.lat(), gpsState.currentLatLng.lng());
+
+    gpsState.followMode = true;
+    updateFollowBtnUI();
+  } catch (e) {
+    debugLog('[경로 탐색 실패]', { message: e.message });
+    document.getElementById('turnList').innerHTML =
+      '<div class="error-box">⚠️ ' + (e.message || e) + '<br><br>TMAP 앱키와 서버 실행 상태를 확인해주세요.</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '탐색';
+  }
+}
+
+// ── 턴바이턴 목록 ─────────────────────────────────────
+function buildTurnList(guides) {
+  const list = document.getElementById('turnList');
+  list.innerHTML = '';
+  navState.currentSteps = guides || [];
+
+  if (!guides || !guides.length) {
+    list.innerHTML = '<div class="msg-box">안내 정보가 없습니다.</div>';
+    return;
+  }
+
+  guides.forEach((g, i) => {
+    const type    = GUIDE_TYPE[g.type] || { icon: '•', label: '이동' };
+    const distStr = g.distance >= 1000 ? (g.distance / 1000).toFixed(1) + ' km' : g.distance + ' m';
+    const el = document.createElement('div');
+    el.className = 'turn-item' + (i === 0 ? ' active-turn' : '');
+    el.innerHTML =
+      '<div class="turn-icon">' + type.icon + '</div>' +
+      '<div class="turn-info"><div class="turn-road">' + (g.instructions || type.label) + '</div>' +
+      '<div class="turn-dist">' + distStr + '</div></div>' +
+      '<span class="turn-type">' + type.label + '</span>';
+
+    el.onclick = () => {
+      document.querySelectorAll('.turn-item').forEach(e => e.classList.remove('active-turn'));
+      el.classList.add('active-turn');
+      if (typeof g.pointIndex !== 'undefined' && mapState.routePolyline) {
+        const pt = mapState.routePolyline.getPath().getAt(g.pointIndex);
+        if (pt) {
+          gpsState.isProgrammaticMove = true;
+          gpsState.followMode = false;
+          updateFollowBtnUI();
+          mapState.map.setCenter(pt);
+          mapState.map.setZoom(16);
+          setTimeout(() => { gpsState.isProgrammaticMove = false; }, 250);
+        }
+      }
+    };
+    list.appendChild(el);
+  });
+}
+
+// ── 장소 검색 ─────────────────────────────────────────
+let searchTimer;
+function searchPlaces(q) {
+  clearTimeout(searchTimer);
+  const list = document.getElementById('placeList');
+  if (!q.trim()) { list.innerHTML = '<div class="msg-box">검색어를 입력하세요</div>'; return; }
+  if (typeof naver === 'undefined') { list.innerHTML = '<div class="msg-box">지도 로딩 중입니다.</div>'; return; }
+  list.innerHTML = '<div class="msg-box"><div class="spinner"></div><br>검색 중…</div>';
+  searchTimer = setTimeout(() => {
+    naver.maps.Service.geocode({ query: q }, (status, res) => {
+      if (status === naver.maps.Service.Status.ERROR || res.v2.meta.totalCount === 0) {
+        list.innerHTML = '<div class="msg-box">검색 결과가 없습니다.</div>'; return;
+      }
+      list.innerHTML = '';
+      res.v2.addresses.slice(0, 8).forEach(item => {
+        const road = item.roadAddress || item.jibunAddress;
+        const pos  = new naver.maps.LatLng(parseFloat(item.y), parseFloat(item.x));
+        const div  = document.createElement('div');
+        div.className = 'place-item';
+        div.innerHTML =
+          '<div class="place-icon">📍</div>' +
+          '<div class="place-info"><div class="place-name">' + road.split(' ').slice(0, 4).join(' ') + '</div>' +
+          '<div class="place-addr">' + (item.jibunAddress || road) + '</div></div>';
+        div.onclick = () => {
+          document.getElementById('endInput').value = road;
+          if (mapState.map) { mapState.map.setCenter(pos); mapState.map.setZoom(15); }
+          switchTab('route', document.querySelector('.tab'));
+        };
+        list.appendChild(div);
+      });
+    });
+  }, 400);
+}
+
+// ── 탭 전환 ───────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+</script>
+</body>
+</html>

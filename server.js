@@ -27,7 +27,7 @@ setInterval(() => {
 
 // ── GET / ─────────────────────────────────────────────────
 app.get('/', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'naver-walk-nav_button_sets_current_location.html'));
+  res.sendFile(path.join(__dirname, 'naver-walk-nav_button_sets_current_location_no_arrive.html'));
 });
 
 // ── POST /api/location ────────────────────────────────────
